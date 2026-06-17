@@ -1,0 +1,256 @@
+use std::fmt;
+
+// ---------------------------------------------------------------------------
+// TokenKind
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TokenKind {
+    // Meta
+    Eof,
+
+    // Literals
+    Null,
+    True,
+    False,
+    Number,
+    String,
+    Identifier,
+
+    // Grouping & Braces
+    OpenBracket,
+    CloseBracket,
+    OpenCurly,
+    CloseCurly,
+    OpenParen,
+    CloseParen,
+
+    // Equivalence
+    Assignment,
+    Equals,
+    NotEquals,
+    Not,
+
+    // Conditional
+    Less,
+    LessEquals,
+    Greater,
+    GreaterEquals,
+
+    // Logical
+    Or,
+    And,
+
+    // Symbols
+    Dot,
+    DotDot,
+    SemiColon,
+    Colon,
+    Question,
+    Comma,
+
+    // Shorthand
+    PlusPlus,
+    MinusMinus,
+    PlusEquals,
+    MinusEquals,
+    NullishAssignment, // ??=
+
+    // Maths
+    Plus,
+    Dash,
+    Slash,
+    Star,
+    Percent,
+
+    // Reserved Keywords
+    Let,
+    Const,
+    Class,
+    New,
+    Import,
+    From,
+    Fn,
+    If,
+    Else,
+    Foreach,
+    While,
+    For,
+    Export,
+    Typeof,
+    In,
+}
+
+impl TokenKind {
+    /// Returns the display name of the token kind, mirroring `TokenKindString`
+    /// in the original Go source.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Eof               => "eof",
+            Self::Null              => "null",
+            Self::True              => "true",
+            Self::False             => "false",
+            Self::Number            => "number",
+            Self::String            => "string",
+            Self::Identifier        => "identifier",
+            Self::OpenBracket       => "open_bracket",
+            Self::CloseBracket      => "close_bracket",
+            Self::OpenCurly         => "open_curly",
+            Self::CloseCurly        => "close_curly",
+            Self::OpenParen         => "open_paren",
+            Self::CloseParen        => "close_paren",
+            Self::Assignment        => "assignment",
+            Self::Equals            => "equals",
+            Self::NotEquals         => "not_equals",
+            Self::Not               => "not",
+            Self::Less              => "less",
+            Self::LessEquals        => "less_equals",
+            Self::Greater           => "greater",
+            Self::GreaterEquals     => "greater_equals",
+            Self::Or                => "or",
+            Self::And               => "and",
+            Self::Dot               => "dot",
+            Self::DotDot            => "dot_dot",
+            Self::SemiColon         => "semi_colon",
+            Self::Colon             => "colon",
+            Self::Question          => "question",
+            Self::Comma             => "comma",
+            Self::PlusPlus          => "plus_plus",
+            Self::MinusMinus        => "minus_minus",
+            Self::PlusEquals        => "plus_equals",
+            Self::MinusEquals       => "minus_equals",
+            Self::NullishAssignment => "nullish_assignment",
+            Self::Plus              => "plus",
+            Self::Dash              => "dash",
+            Self::Slash             => "slash",
+            Self::Star              => "star",
+            Self::Percent           => "percent",
+            Self::Let               => "let",
+            Self::Const             => "const",
+            Self::Class             => "class",
+            Self::New               => "new",
+            Self::Import            => "import",
+            Self::From              => "from",
+            Self::Fn                => "fn",
+            Self::If                => "if",
+            Self::Else              => "else",
+            Self::Foreach           => "foreach",
+            Self::While             => "while",
+            Self::For               => "for",
+            Self::Export            => "export",
+            Self::Typeof            => "typeof",
+            Self::In                => "in",
+        }
+    }
+
+    /// Resolve a raw identifier string to a reserved keyword, or `None` if it
+    /// is not a keyword. Mirrors `reserved_lu` in the original Go source.
+    pub fn from_keyword(word: &str) -> Option<Self> {
+        match word {
+            "true"    => Some(Self::True),
+            "false"   => Some(Self::False),
+            "null"    => Some(Self::Null),
+            "let"     => Some(Self::Let),
+            "const"   => Some(Self::Const),
+            "class"   => Some(Self::Class),
+            "new"     => Some(Self::New),
+            "import"  => Some(Self::Import),
+            "from"    => Some(Self::From),
+            "fn"      => Some(Self::Fn),
+            "if"      => Some(Self::If),
+            "else"    => Some(Self::Else),
+            "foreach" => Some(Self::Foreach),
+            "while"   => Some(Self::While),
+            "for"     => Some(Self::For),
+            "export"  => Some(Self::Export),
+            "typeof"  => Some(Self::Typeof),
+            "in"      => Some(Self::In),
+            _         => None,
+        }
+    }
+}
+
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Token
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub kind:  TokenKind,
+    pub value: String,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, value: impl Into<String>) -> Self {
+        Self { kind, value: value.into() }
+    }
+
+    /// Returns `true` if this token's kind matches any of the provided kinds.
+    /// Mirrors `IsOneOfMany` in the original Go source.
+    pub fn is_one_of_many(&self, expected: &[TokenKind]) -> bool {
+        expected.contains(&self.kind)
+    }
+
+    /// Prints a human-readable debug representation of the token.
+    /// Mirrors `Debug()` in the original Go source.
+    pub fn debug(&self) {
+        match self.kind {
+            TokenKind::Identifier | TokenKind::Number | TokenKind::String => {
+                println!("{}({})", self.kind, self.value);
+            }
+            _ => {
+                println!("{}()", self.kind);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_as_str_roundtrip() {
+        assert_eq!(TokenKind::Eof.as_str(), "eof");
+        assert_eq!(TokenKind::NullishAssignment.as_str(), "nullish_assignment");
+        assert_eq!(TokenKind::Foreach.as_str(), "foreach");
+    }
+
+    #[test]
+    fn test_keyword_lookup() {
+        assert_eq!(TokenKind::from_keyword("let"),     Some(TokenKind::Let));
+        assert_eq!(TokenKind::from_keyword("foreach"), Some(TokenKind::Foreach));
+        assert_eq!(TokenKind::from_keyword("typeof"),  Some(TokenKind::Typeof));
+        assert_eq!(TokenKind::from_keyword("unknown"), None);
+    }
+
+    #[test]
+    fn test_is_one_of_many() {
+        let tok = Token::new(TokenKind::Plus, "+");
+        assert!(tok.is_one_of_many(&[TokenKind::Plus, TokenKind::Dash]));
+        assert!(!tok.is_one_of_many(&[TokenKind::Star, TokenKind::Slash]));
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(format!("{}", TokenKind::OpenBracket), "open_bracket");
+        assert_eq!(format!("{}", TokenKind::In), "in");
+    }
+
+    #[test]
+    fn test_token_new() {
+        let tok = Token::new(TokenKind::Identifier, "foo");
+        assert_eq!(tok.kind, TokenKind::Identifier);
+        assert_eq!(tok.value, "foo");
+    }
+}
