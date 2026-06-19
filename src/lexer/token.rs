@@ -1,89 +1,154 @@
 use std::fmt;
 
-// ---------------------------------------------------------------------------
-// TokenKind
-// ---------------------------------------------------------------------------
-
+/// Enumerates every distinct lexical token the Relix lexer can produce.
+///
+/// `TokenKind` covers literals, identifiers, operators, punctuation, and
+/// reserved keywords. Use [`TokenKind::from_keyword`] to resolve an identifier
+/// string to its keyword variant (if any).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
-    // Meta
+    /// End-of-file sentinel.
     Eof,
 
-    // Literals
+    // ── Literals ──────────────────────────────────────────────────────
+
+    /// The `null` literal.
     Null,
+    /// The `true` literal.
     True,
+    /// The `false` literal.
     False,
+    /// A numeric literal (integer or floating-point).
     Number,
+    /// A double-quoted string literal.
     String,
+    /// An identifier (variable name, function name, etc.).
     Identifier,
 
-    // Grouping & Braces
+    // ── Grouping & braces ─────────────────────────────────────────────
+
+    /// `[`
     OpenBracket,
+    /// `]`
     CloseBracket,
+    /// `{`
     OpenCurly,
+    /// `}`
     CloseCurly,
+    /// `(`
     OpenParen,
+    /// `)`
     CloseParen,
 
-    // Equivalence
+    // ── Equivalence ───────────────────────────────────────────────────
+
+    /// `=`
     Assignment,
+    /// `==`
     Equals,
+    /// `!=`
     NotEquals,
+    /// `!`
     Not,
 
-    // Conditional
+    // ── Conditional / comparison ──────────────────────────────────────
+
+    /// `<`
     Less,
+    /// `<=`
     LessEquals,
+    /// `>`
     Greater,
+    /// `>=`
     GreaterEquals,
 
-    // Logical
+    // ── Logical ───────────────────────────────────────────────────────
+
+    /// `||`
     Or,
+    /// `&&`
     And,
 
-    // Symbols
+    // ── Symbols / punctuation ─────────────────────────────────────────
+
+    /// `.`
     Dot,
+    /// `..`
     DotDot,
+    /// `;`
     SemiColon,
+    /// `:`
     Colon,
+    /// `?`
     Question,
+    /// `,`
     Comma,
 
-    // Shorthand
-    PlusPlus,
-    MinusMinus,
-    PlusEquals,
-    MinusEquals,
-    NullishAssignment, // ??=
+    // ── Shorthand operators ───────────────────────────────────────────
 
-    // Maths
+    /// `++`
+    PlusPlus,
+    /// `--`
+    MinusMinus,
+    /// `+=`
+    PlusEquals,
+    /// `-=`
+    MinusEquals,
+    /// `??=`
+    NullishAssignment,
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+
+    /// `+`
     Plus,
+    /// `-`
     Dash,
+    /// `/`
     Slash,
+    /// `*`
     Star,
+    /// `%`
     Percent,
 
-    // Reserved Keywords
+    // ── Reserved keywords ─────────────────────────────────────────────
+
+    /// `let`
     Let,
+    /// `const`
     Const,
+    /// `class`
     Class,
+    /// `new`
     New,
+    /// `import`
     Import,
+    /// `from`
     From,
+    /// `fn`
     Fn,
+    /// `if`
     If,
+    /// `else`
     Else,
+    /// `foreach`
     Foreach,
+    /// `while`
     While,
+    /// `for`
     For,
+    /// `export`
     Export,
+    /// `typeof`
     Typeof,
+    /// `in`
     In,
 }
 
 impl TokenKind {
-    /// Returns the display name of the token kind, mirroring `TokenKindString`
-    /// in the original Go source.
+    /// Returns a static string representation of this token kind.
+    ///
+    /// The returned string is a snake_case label suitable for diagnostics and
+    /// debug output.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Eof               => "eof",
@@ -143,8 +208,19 @@ impl TokenKind {
         }
     }
 
-    /// Resolve a raw identifier string to a reserved keyword, or `None` if it
-    /// is not a keyword. Mirrors `reserved_lu` in the original Go source.
+    /// Resolves a raw identifier string to a reserved keyword token kind.
+    ///
+    /// Returns `None` if the string is not a keyword, meaning it should be
+    /// treated as a plain [`Identifier`](TokenKind::Identifier).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relix::lexer::TokenKind;
+    ///
+    /// assert_eq!(TokenKind::from_keyword("let"), Some(TokenKind::Let));
+    /// assert_eq!(TokenKind::from_keyword("foo"), None);
+    /// ```
     pub fn from_keyword(word: &str) -> Option<Self> {
         match word {
             "true"    => Some(Self::True),
@@ -176,29 +252,47 @@ impl fmt::Display for TokenKind {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Token
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone)]
+/// A single lexical token produced by the lexer.
+///
+/// Each token carries a [`TokenKind`] indicating what category of token it is,
+/// and a [`String`](std::string::String) holding the original source text that
+/// was matched.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Token {
+    /// The category of this token.
     pub kind:  TokenKind,
+    /// The raw source text that was matched for this token.
     pub value: String,
 }
 
 impl Token {
+    /// Creates a new token with the given kind and value.
     pub fn new(kind: TokenKind, value: impl Into<String>) -> Self {
         Self { kind, value: value.into() }
     }
 
     /// Returns `true` if this token's kind matches any of the provided kinds.
-    /// Mirrors `IsOneOfMany` in the original Go source.
+    ///
+    /// This is a convenience method for checking against multiple token kinds
+    /// without writing a long chain of `||` comparisons.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use relix::lexer::{Token, TokenKind};
+    ///
+    /// let tok = Token::new(TokenKind::Plus, "+");
+    /// assert!(tok.is_one_of_many(&[TokenKind::Plus, TokenKind::Dash]));
+    /// ```
     pub fn is_one_of_many(&self, expected: &[TokenKind]) -> bool {
         expected.contains(&self.kind)
     }
 
-    /// Prints a human-readable debug representation of the token.
-    /// Mirrors `Debug()` in the original Go source.
+    /// Prints a human-readable debug representation of the token to stdout.
+    ///
+    /// For tokens that carry meaningful values (identifiers, numbers, strings),
+    /// the value is included in the output. For all other tokens, only the kind
+    /// is printed.
     pub fn debug(&self) {
         match self.kind {
             TokenKind::Identifier | TokenKind::Number | TokenKind::String => {

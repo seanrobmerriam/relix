@@ -1,54 +1,122 @@
+//! Binding powers and handler registration for the Pratt parser.
+//!
+//! This module defines the [`Lookups`] struct, which holds the tables that map
+//! token kinds to handler functions and binding powers. The Pratt parser uses
+//! these tables to decide how to parse each token it encounters.
+//!
+//! # Binding powers
+//!
+//! [`BindingPower`] controls operator precedence. Higher binding power means
+//! tighter binding. The parser uses binding powers to decide when to stop
+//! consuming tokens in a Pratt parsing loop.
+//!
+//! # Handler types
+//!
+//! There are three kinds of handlers:
+//!
+//! - **NUD** (null denotation) — handles tokens that appear at the start of an
+//!   expression (e.g., literals, prefix operators, grouping).
+//! - **LED** (left denotation) — handles tokens that appear after a left-hand
+//!   expression (e.g., binary operators, member access, function calls).
+//! - **Stmt** — handles tokens that start a statement (e.g., `let`, `fn`, `if`).
+//!
+//! # Extending the parser
+//!
+//! To add new syntax, register additional handlers via the [`Lookups`] methods
+//! in [`create_token_lookups`] or [`create_type_token_lookups`].
+
 use std::collections::HashMap;
 use crate::ast::{Expr, Stmt, Type};
+use crate::error::RelixError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
-// ---------------------------------------------------------------------------
-// Binding power
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// Binding power levels for Pratt parsing.
+///
+/// Binding power controls operator precedence. Higher values bind more tightly.
+/// The parser uses these levels to decide when to stop consuming tokens in a
+/// Pratt parsing loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum BindingPower {
+    /// Default / lowest binding power.
+    #[default]
     Default = 0,
+    /// Comma operator.
     Comma,
+    /// Assignment operators (`=`, `+=`, `-=`, etc.).
     Assignment,
+    /// Logical operators (`&&`, `||`) and range (`..`).
     Logical,
+    /// Relational / comparison operators (`<`, `==`, etc.).
     Relational,
+    /// Additive operators (`+`, `-`).
     Additive,
+    /// Multiplicative operators (`*`, `/`, `%`).
     Multiplicative,
+    /// Unary / prefix operators (`-`, `!`, `typeof`).
     Unary,
+    /// Function call `()`.
     Call,
+    /// Member access `.` and computed access `[]`.
     Member,
+    /// Primary expressions (literals, identifiers, grouping).
     Primary,
 }
 
-// ---------------------------------------------------------------------------
-// Handler types
-// ---------------------------------------------------------------------------
+/// Function signature for statement handlers.
+pub type StmtHandler = fn(&mut Parser, &Lookups) -> Result<Stmt, RelixError>;
 
-pub type StmtHandler = fn(&mut Parser, &Lookups) -> Stmt;
-pub type NudHandler  = fn(&mut Parser, &Lookups) -> Expr;
-pub type LedHandler  = fn(&mut Parser, &Lookups, Expr, BindingPower) -> Expr;
+/// Function signature for NUD (null denotation) expression handlers.
+///
+/// NUD handlers are called when a token appears at the start of an expression.
+pub type NudHandler  = fn(&mut Parser, &Lookups) -> Result<Expr, RelixError>;
 
-pub type TypeNudHandler = fn(&mut Parser, &Lookups) -> Type;
-pub type TypeLedHandler = fn(&mut Parser, &Lookups, Type, BindingPower) -> Type;
+/// Function signature for LED (left denotation) expression handlers.
+///
+/// LED handlers are called when a token appears after a left-hand expression.
+/// They receive the left-hand expression and the current binding power.
+pub type LedHandler  = fn(&mut Parser, &Lookups, Expr, BindingPower) -> Result<Expr, RelixError>;
 
-// ---------------------------------------------------------------------------
-// Lookup tables
-// ---------------------------------------------------------------------------
+/// Function signature for type NUD handlers.
+pub type TypeNudHandler = fn(&mut Parser, &Lookups) -> Result<Type, RelixError>;
 
+/// Function signature for type LED handlers.
+pub type TypeLedHandler = fn(&mut Parser, &Lookups, Type, BindingPower) -> Result<Type, RelixError>;
+
+/// Lookup tables for the Pratt parser.
+///
+/// Holds maps from token kinds to handler functions and binding powers. The
+/// parser consults these tables to decide how to handle each token it
+/// encounters.
+///
+/// Use the registration methods ([`nud`](Lookups::nud), [`led`](Lookups::led),
+/// [`stmt`](Lookups::stmt), etc.) to populate the tables before parsing.
 pub struct Lookups {
+    /// Binding power table for expression parsing.
     pub bp:       HashMap<TokenKind, BindingPower>,
+    /// NUD (null denotation) handler table for expression parsing.
     pub nud:      HashMap<TokenKind, NudHandler>,
+    /// LED (left denotation) handler table for expression parsing.
     pub led:      HashMap<TokenKind, LedHandler>,
+    /// Statement handler table.
     pub stmt:     HashMap<TokenKind, StmtHandler>,
 
+    /// Binding power table for type parsing.
     pub type_bp:  HashMap<TokenKind, BindingPower>,
+    /// NUD handler table for type parsing.
     pub type_nud: HashMap<TokenKind, TypeNudHandler>,
+    /// LED handler table for type parsing.
     pub type_led: HashMap<TokenKind, TypeLedHandler>,
 }
 
+impl Default for Lookups {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Lookups {
+    /// Creates a new, empty `Lookups` instance.
     pub fn new() -> Self {
         Self {
             bp:       HashMap::new(),
@@ -61,36 +129,55 @@ impl Lookups {
         }
     }
 
+    /// Registers a LED (left denotation) handler for expression parsing.
+    ///
+    /// Also sets the binding power for the token kind in the `bp` table.
     pub fn led(&mut self, kind: TokenKind, bp: BindingPower, f: LedHandler) {
         self.bp.insert(kind, bp);
         self.led.insert(kind, f);
     }
 
+    /// Registers a NUD (null denotation) handler for expression parsing.
+    ///
+    /// Also sets the binding power to [`BindingPower::Primary`] in the `bp`
+    /// table, since NUD tokens typically terminate parsing loops.
     pub fn nud(&mut self, kind: TokenKind, _bp: BindingPower, f: NudHandler) {
         self.bp.insert(kind, BindingPower::Primary);
         self.nud.insert(kind, f);
     }
 
+    /// Registers a statement handler.
+    ///
+    /// Also sets the binding power to [`BindingPower::Default`] in the `bp`
+    /// table.
     pub fn stmt(&mut self, kind: TokenKind, f: StmtHandler) {
         self.bp.insert(kind, BindingPower::Default);
         self.stmt.insert(kind, f);
     }
 
+    /// Registers a LED handler for type parsing.
+    ///
+    /// Also sets the binding power for the token kind in the `type_bp` table.
     pub fn type_led(&mut self, kind: TokenKind, bp: BindingPower, f: TypeLedHandler) {
         self.type_bp.insert(kind, bp);
         self.type_led.insert(kind, f);
     }
 
+    /// Registers a NUD handler for type parsing.
+    ///
+    /// Also sets the binding power to [`BindingPower::Primary`] in the
+    /// `type_bp` table.
     pub fn type_nud(&mut self, kind: TokenKind, _bp: BindingPower, f: TypeNudHandler) {
         self.type_bp.insert(kind, BindingPower::Primary);
         self.type_nud.insert(kind, f);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Token lookup registration
-// ---------------------------------------------------------------------------
-
+/// Populates the lookup tables with handlers for all standard Relix expression
+/// and statement syntax.
+///
+/// This function registers NUD, LED, and statement handlers for all built-in
+/// operators, literals, keywords, and punctuation.
 pub fn create_token_lookups(lu: &mut Lookups) {
     use crate::exprs::*;
     use crate::stmts::*;
@@ -154,6 +241,10 @@ pub fn create_token_lookups(lu: &mut Lookups) {
     lu.stmt(TK::Class,     parse_class_declaration_stmt);
 }
 
+/// Populates the lookup tables with handlers for Relix type annotation syntax.
+///
+/// This function registers NUD and LED handlers for symbol types (e.g.,
+/// `number`) and list types (e.g., `[]number`).
 pub fn create_type_token_lookups(lu: &mut Lookups) {
     use crate::types::*;
     use BindingPower as BP;

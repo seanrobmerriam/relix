@@ -1,7 +1,16 @@
 [package]
-name = "tokenizer"
+name = "relix"
 version = "0.1.0"
 edition = "2024"
+authors = ["Sean Merriam"]
+description = "A Pratt parser implementation for a custom language with support for expressions, statements, and type annotations"
+license = "MIT"
+homepage = "https://github.com/seanrobmerriam/relix"
+documentation = "https://docs.rs/relix"
+repository = "https://github.com/seanrobmerriam/relix"
+readme = "README.md"
+keywords = ["parser", "lexer", "pratt", "ast", "language"]
+categories = ["parser-implementations", "development-tools"]
 
 [dependencies]
 regex = "1"

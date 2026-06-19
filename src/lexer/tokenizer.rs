@@ -1,20 +1,13 @@
 use regex::Regex;
 use super::token::{Token, TokenKind};
+use crate::error::RelixError;
 
-// ---------------------------------------------------------------------------
-// Handler type
-// ---------------------------------------------------------------------------
-
-type Handler = fn(&mut Lexer, &Regex);
+type Handler = fn(&mut Lexer, &Regex) -> Result<(), RelixError>;
 
 struct Pattern {
     regex:   Regex,
     handler: Handler,
 }
-
-// ---------------------------------------------------------------------------
-// Lexer
-// ---------------------------------------------------------------------------
 
 pub struct Lexer {
     patterns:   Vec<Pattern>,
@@ -52,11 +45,30 @@ impl Lexer {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
-
-pub fn tokenize(source: &str) -> Vec<Token> {
+/// Tokenizes the given source string into a sequence of [`Token`] values.
+///
+/// This is the main entry point for lexical analysis. The function processes
+/// the entire input, skipping whitespace and comments, and returns a vector of
+/// tokens terminated by an [`Eof`](TokenKind::Eof) token.
+///
+/// # Errors
+///
+/// Returns a [`RelixError`] if the lexer encounters an unrecognized character
+/// sequence that does not match any pattern in the token table.
+///
+/// # Example
+///
+/// ```
+/// use relix::lexer::{tokenize, TokenKind};
+///
+/// let tokens = tokenize("x + 42").unwrap();
+/// assert_eq!(tokens.len(), 4); // x, +, 42, EOF
+/// assert_eq!(tokens[0].kind, TokenKind::Identifier);
+/// assert_eq!(tokens[1].kind, TokenKind::Plus);
+/// assert_eq!(tokens[2].kind, TokenKind::Number);
+/// assert_eq!(tokens[3].kind, TokenKind::Eof);
+/// ```
+pub fn tokenize(source: &str) -> Result<Vec<Token>, RelixError> {
     let mut lex = Lexer::new(source);
 
     while !lex.at_eof() {
@@ -65,78 +77,78 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         for i in 0..lex.patterns.len() {
             let remainder = &lex.source_str[lex.pos..];
 
-            if let Some(m) = lex.patterns[i].regex.find(remainder) {
-                if m.start() == 0 {
-                    let handler = lex.patterns[i].handler;
-                    // SAFETY: the regex is never mutated; the pointer remains
-                    // valid for the duration of the handler call.
-                    let regex_ptr: *const Regex = &lex.patterns[i].regex;
-                    handler(&mut lex, unsafe { &*regex_ptr });
-                    matched = true;
-                    break;
-                }
+            if let Some(m) = lex.patterns[i].regex.find(remainder)
+                && m.start() == 0
+            {
+                let handler = lex.patterns[i].handler;
+                let regex_ptr: *const Regex = &lex.patterns[i].regex;
+                handler(&mut lex, unsafe { &*regex_ptr })?;
+                matched = true;
+                break;
             }
         }
 
         if !matched {
-            panic!(
+            return Err(RelixError::new(format!(
                 "lexer error: unrecognized token near '{}'",
                 lex.remainder().chars().take(20).collect::<String>()
-            );
+            )));
         }
     }
 
     lex.push(Token::new(TokenKind::Eof, "EOF"));
-    lex.tokens
+    Ok(lex.tokens)
 }
 
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
-
-fn skip_handler(lex: &mut Lexer, regex: &Regex) {
+fn skip_handler(lex: &mut Lexer, regex: &Regex) -> Result<(), RelixError> {
     if let Some(m) = regex.find(lex.remainder()) {
         lex.advance_n(m.end());
     }
+    Ok(())
 }
 
-fn comment_handler(lex: &mut Lexer, regex: &Regex) {
+fn comment_handler(lex: &mut Lexer, regex: &Regex) -> Result<(), RelixError> {
     if let Some(m) = regex.find(lex.remainder()) {
         lex.advance_n(m.end());
         lex.line += 1;
     }
+    Ok(())
 }
 
-fn string_handler(lex: &mut Lexer, regex: &Regex) {
+fn string_handler(lex: &mut Lexer, regex: &Regex) -> Result<(), RelixError> {
     if let Some(m) = regex.find(lex.remainder()) {
         let literal = m.as_str().to_owned();
         lex.push(Token::new(TokenKind::String, &literal));
         lex.advance_n(literal.len());
     }
+    Ok(())
 }
 
-fn number_handler(lex: &mut Lexer, regex: &Regex) {
+fn number_handler(lex: &mut Lexer, regex: &Regex) -> Result<(), RelixError> {
     if let Some(m) = regex.find(lex.remainder()) {
         let num = m.as_str().to_owned();
         lex.push(Token::new(TokenKind::Number, &num));
         lex.advance_n(num.len());
     }
+    Ok(())
 }
 
-fn symbol_handler(lex: &mut Lexer, regex: &Regex) {
+fn symbol_handler(lex: &mut Lexer, regex: &Regex) -> Result<(), RelixError> {
     if let Some(m) = regex.find(lex.remainder()) {
         let word = m.as_str().to_owned();
         let kind = TokenKind::from_keyword(&word).unwrap_or(TokenKind::Identifier);
         lex.push(Token::new(kind, &word));
         lex.advance_n(word.len());
     }
+    Ok(())
 }
 
 macro_rules! default_handler {
     ($name:ident, $kind:expr, $value:expr) => {
-        fn $name(lex: &mut Lexer, _regex: &Regex) {
+        fn $name(lex: &mut Lexer, _regex: &Regex) -> Result<(), RelixError> {
             lex.advance_n($value.len());
             lex.push(Token::new($kind, $value));
+            Ok(())
         }
     };
 }
@@ -173,10 +185,6 @@ default_handler!(dash_handler,               TokenKind::Dash,              "-");
 default_handler!(slash_handler,              TokenKind::Slash,             "/");
 default_handler!(star_handler,               TokenKind::Star,              "*");
 default_handler!(percent_handler,            TokenKind::Percent,           "%");
-
-// ---------------------------------------------------------------------------
-// Pattern table — order matters (longer / more-specific patterns first)
-// ---------------------------------------------------------------------------
 
 fn build_patterns() -> Vec<Pattern> {
     macro_rules! pat {
@@ -236,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_basic_expression() {
-        let tokens = tokenize("x = 1 + 2;");
+        let tokens = tokenize("x = 1 + 2;").unwrap();
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
         assert!(matches!(kinds[0], TokenKind::Identifier));
         assert!(matches!(kinds[1], TokenKind::Assignment));
@@ -249,14 +257,14 @@ mod tests {
 
     #[test]
     fn test_string_literal() {
-        let tokens = tokenize(r#""hello""#);
+        let tokens = tokenize(r#""hello""#).unwrap();
         assert!(matches!(tokens[0].kind, TokenKind::String));
         assert_eq!(tokens[0].value, r#""hello""#);
     }
 
     #[test]
     fn test_keywords() {
-        let tokens = tokenize("let x = null;");
+        let tokens = tokenize("let x = null;").unwrap();
         assert!(matches!(tokens[0].kind, TokenKind::Let));
         assert!(matches!(tokens[1].kind, TokenKind::Identifier));
         assert!(matches!(tokens[2].kind, TokenKind::Assignment));
@@ -265,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_comment_skipped() {
-        let tokens = tokenize("x // this is a comment\ny");
+        let tokens = tokenize("x // this is a comment\ny").unwrap();
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
         assert_eq!(kinds.len(), 3);
         assert!(matches!(kinds[0], TokenKind::Identifier));
@@ -275,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_float_number() {
-        let tokens = tokenize("3.14");
+        let tokens = tokenize("3.14").unwrap();
         assert!(matches!(tokens[0].kind, TokenKind::Number));
         assert_eq!(tokens[0].value, "3.14");
     }
@@ -283,7 +291,7 @@ mod tests {
     #[test]
     fn test_compound_operators() {
         let src = "a++ b-- c += 1 d -= 2 e != f e == f";
-        let tokens = tokenize(src);
+        let tokens = tokenize(src).unwrap();
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
         assert!(matches!(kinds[1], TokenKind::PlusPlus));
         assert!(matches!(kinds[3], TokenKind::MinusMinus));
@@ -291,5 +299,11 @@ mod tests {
         assert!(matches!(kinds[8], TokenKind::MinusEquals));
         assert!(matches!(kinds[11], TokenKind::NotEquals));
         assert!(matches!(kinds[14], TokenKind::Equals));
+    }
+
+    #[test]
+    fn test_unrecognized_token() {
+        let result = tokenize("x @ y");
+        assert!(result.is_err());
     }
 }
