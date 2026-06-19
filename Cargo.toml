@@ -1,6 +1,6 @@
 [package]
 name = "relix"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["Sean Merriam"]
 description = "A Pratt parser implementation for a custom language with support for expressions, statements, and type annotations"
