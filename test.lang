@@ -1,0 +1,31 @@
+// Variable declarations
+let x = 10;
+const name = "hello";
+
+// Functions
+fn add(a: number, b: number): number {
+    return a + b;
+}
+
+// Conditionals
+if x > 5 {
+    let y = x * 2;
+} else {
+    let y = 0;
+}
+
+// Loops
+foreach item in items {
+    print(item);
+}
+
+// Classes
+class Point {
+    let x: number;
+    let y: number;
+}
+
+// Expressions
+let result = add(1, 2) + 3 * 4;
+let arr = [1, 2, 3];
+let p = new Point();

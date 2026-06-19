@@ -142,6 +142,8 @@ pub enum TokenKind {
     Typeof,
     /// `in`
     In,
+    /// `return`
+    Return,
 }
 
 impl TokenKind {
@@ -205,6 +207,7 @@ impl TokenKind {
             Self::Export            => "export",
             Self::Typeof            => "typeof",
             Self::In                => "in",
+            Self::Return            => "return",
         }
     }
 
@@ -241,6 +244,7 @@ impl TokenKind {
             "export"  => Some(Self::Export),
             "typeof"  => Some(Self::Typeof),
             "in"      => Some(Self::In),
+            "return"  => Some(Self::Return),
             _         => None,
         }
     }

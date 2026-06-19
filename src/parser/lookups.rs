@@ -142,7 +142,6 @@ impl Lookups {
     /// Also sets the binding power to [`BindingPower::Primary`] in the `bp`
     /// table, since NUD tokens typically terminate parsing loops.
     pub fn nud(&mut self, kind: TokenKind, _bp: BindingPower, f: NudHandler) {
-        self.bp.insert(kind, BindingPower::Primary);
         self.nud.insert(kind, f);
     }
 
@@ -168,7 +167,6 @@ impl Lookups {
     /// Also sets the binding power to [`BindingPower::Primary`] in the
     /// `type_bp` table.
     pub fn type_nud(&mut self, kind: TokenKind, _bp: BindingPower, f: TypeNudHandler) {
-        self.type_bp.insert(kind, BindingPower::Primary);
         self.type_nud.insert(kind, f);
     }
 }
@@ -239,6 +237,7 @@ pub fn create_token_lookups(lu: &mut Lookups) {
     lu.stmt(TK::Import,    parse_import_stmt);
     lu.stmt(TK::Foreach,   parse_foreach_stmt);
     lu.stmt(TK::Class,     parse_class_declaration_stmt);
+    lu.stmt(TK::Return,    parse_return_stmt);
 }
 
 /// Populates the lookup tables with handlers for Relix type annotation syntax.

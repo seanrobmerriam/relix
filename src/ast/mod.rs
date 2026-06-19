@@ -70,6 +70,8 @@ pub enum Stmt {
     Foreach(ForeachStmt),
     /// A class declaration (e.g., `class Point { ... }`).
     ClassDecl(ClassDeclarationStmt),
+    /// A return statement (e.g., `return x + 1;`).
+    Return(ReturnStmt),
 }
 
 /// A type annotation node in the AST.
@@ -324,6 +326,15 @@ pub struct ClassDeclarationStmt {
     pub name: String,
     /// The class body (a list of statements, typically field declarations).
     pub body: Vec<Stmt>,
+}
+
+/// A return statement.
+///
+/// Represents return statements like `return;` or `return x + 1;`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnStmt {
+    /// The optional return value expression.
+    pub value: Option<Expr>,
 }
 
 /// A symbol type annotation.

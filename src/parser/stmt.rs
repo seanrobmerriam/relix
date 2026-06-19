@@ -10,7 +10,7 @@
 
 use crate::ast::{
     BlockStmt, ClassDeclarationStmt, ExpressionStmt, ForeachStmt, FunctionDeclarationStmt,
-    IfStmt, ImportStmt, Stmt, VarDeclarationStmt,
+    IfStmt, ImportStmt, ReturnStmt, Stmt, VarDeclarationStmt,
 };
 use crate::error::RelixError;
 use crate::exprs::{parse_expr, parse_fn_params_and_body};
@@ -277,4 +277,23 @@ pub fn parse_class_declaration_stmt(p: &mut Parser, lu: &Lookups) -> Result<Stmt
         name: class_name,
         body,
     }))
+}
+
+/// Parses a `return` statement.
+///
+/// # Syntax
+///
+/// ```text
+/// return;
+/// return a + b;
+/// ```
+pub fn parse_return_stmt(p: &mut Parser, lu: &Lookups) -> Result<Stmt, RelixError> {
+    p.advance();
+    let value = if p.current_token_kind() != TokenKind::SemiColon {
+        Some(parse_expr(p, lu, BindingPower::Default)?)
+    } else {
+        None
+    };
+    p.expect(TokenKind::SemiColon)?;
+    Ok(Stmt::Return(ReturnStmt { value }))
 }
